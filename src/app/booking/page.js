@@ -115,7 +115,7 @@ export default function BookingPage() {
           <Card className="p-6">
             {step === 1 && (
               <CalendarGrid 
-                availableDates={availableDates}
+                availableDates={existingBookings}
                 onBookingSelect={handleDateSelect}
               />
             )}

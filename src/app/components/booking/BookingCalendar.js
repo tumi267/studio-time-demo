@@ -98,6 +98,7 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
     setShowTimeSlots(false);
   };
 
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row gap-8">
@@ -109,8 +110,8 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
             numberOfMonths={2}
             disabled={(day) => {
               const dateStr = format(day, 'yyyy-MM-dd');
-              const dateData = availableDates.find(d => d.date === dateStr);
-              return !dateData?.available;
+              const dateData = availableDates.find(d => d.date !== dateStr);
+              return !dateData;
             }}
           />
           
@@ -154,7 +155,7 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
                         ? 'outline' 
                         : 'ghost'
                   }
-                  disabled={!isTimeAvailable(time)}
+                  disabled={isTimeAvailable(time)}
                   onClick={() => handleTimeSelect(time)}
                   className={
                     isTimeBoundary(time) ? 'ring-2 ring-offset-2 ring-primary' : ''
