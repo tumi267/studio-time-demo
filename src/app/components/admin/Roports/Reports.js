@@ -1,8 +1,7 @@
-// app/dashboard/reports/revenue-report.jsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, subDays, subMonths, subYears, startOfDay, endOfDay } from 'date-fns';
+import { format, subDays, subMonths, subYears, startOfDay, endOfDay, isAfter } from 'date-fns';
 import { 
   Card, 
   CardHeader, 
@@ -50,39 +49,79 @@ import {
   Home
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import {existingBookings as bookings,teamMembers,rooms} from '../../../data/bookingdates'
+import { calculateDurationInHours, calculateTotalCost } from '@/lib/utils';
 
 export function RevenueBookingReport() {
   const [dateRange, setDateRange] = useState({
     from: startOfDay(subMonths(new Date(), 1)),
     to: endOfDay(new Date()),
   });
+  
   const [timeDuration, setTimeDuration] = useState('month');
-  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chartView, setChartView] = useState('revenue');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'team' or 'rooms'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'team'
+  const [total,setTotal]=useState(0)
+  const [avgBookingValue,setAvgBookingValue]=useState(0) 
+  const [chartData, setChartData] = useState([]);
 
-  // Mock data for team members and rooms
-  const teamMembers = [
-    { id: 1, name: 'Alex Johnson', role: 'Therapist' },
-    { id: 2, name: 'Sarah Williams', role: 'Therapist' },
-    { id: 3, name: 'Mike Brown', role: 'Receptionist' },
-    { id: 4, name: 'Emma Davis', role: 'Manager' }
-  ];
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString(); // Or format however you'd like
+  };
 
-  const rooms = [
-    { id: 1, name: 'Massage Room 1', type: 'Massage' },
-    { id: 2, name: 'Massage Room 2', type: 'Massage' },
-    { id: 3, name: 'Spa Suite', type: 'Spa' },
-    { id: 4, name: 'Facial Room', type: 'Facial' },
-    { id: 5, name: 'VIP Suite', type: 'VIP' }
-  ];
+  const filterBookingsByDuration = (bookings, duration) => {
+    const now = new Date();
+
+    switch (duration) {
+      case 'day':
+        return bookings.filter(b => formatDate(b.date) === formatDate(now));
+      case 'week':
+        return bookings.filter(b => isAfter(new Date(b.date), subDays(now, 7)));
+      case 'month':
+        return bookings.filter(b => isAfter(new Date(b.date), subDays(now, 30)));
+      case 'quarter':
+        return bookings.filter(b => isAfter(new Date(b.date), subDays(now, 90)));
+      case 'year':
+        return bookings.filter(b => isAfter(new Date(b.date), subDays(now, 365)));
+      default:
+        return bookings; // for custom or no filter
+    }
+  };
+  useEffect(() => {
+    setLoading(true);
+
+    const filtered = filterBookingsByDuration(bookings, timeDuration);
+    const totalVal = filtered.reduce((sum, book) => {
+      return sum + calculateTotalCost(book, rooms, teamMembers);
+    }, 0);
+    const avg = filtered.length > 0 ? totalVal / filtered.length : 0;
+
+    const data = filtered.map((booking) => ({
+      displayDate: formatDate(booking.date),
+      revenue: calculateTotalCost(booking, rooms, teamMembers),
+    }));
+
+    setChartData(data);
+    setTotal(totalVal);
+    setAvgBookingValue(avg);
+    setLoading(false);
+  }, [timeDuration, bookings]);
 
   // Prepare team performance data
+  function calculateMemberRevenueFromBooking(booking, member) {
+    const duration = calculateDurationInHours(booking.startTime, booking.endTime);
+    return duration * member.rate;
+  }
   const prepareTeamData = () => {
+    const filtered = filterBookingsByDuration(bookings, timeDuration);
+  
     return teamMembers.map(member => {
-      const memberBookings = bookings.filter(b => b.staffId === member.id);
-      const revenue = memberBookings.reduce((sum, b) => sum + b.amount, 0);
+      const memberBookings = filtered.filter(b => b.teamMemberIds.includes(member.id));
+      const revenue = memberBookings.reduce((sum, booking) => {
+        return sum + calculateMemberRevenueFromBooking(booking, member);
+      }, 0);
       return {
         ...member,
         bookings: memberBookings.length,
@@ -91,23 +130,22 @@ export function RevenueBookingReport() {
       };
     });
   };
-
-  // Prepare room booking data
+  
   const prepareRoomData = () => {
+    const filtered = filterBookingsByDuration(bookings, timeDuration);
+  
     return rooms.map(room => {
-      const roomBookings = bookings.filter(b => b.roomId === room.id);
+      const roomBookings = filtered.filter(b => b.roomId === room.id);
       return {
         ...room,
         bookings: roomBookings.length,
-        percentage: bookings.length > 0 ? (roomBookings.length / bookings.length * 100) : 0
+        percentage: filtered.length > 0 ? (roomBookings.length / filtered.length * 100) : 0
       };
     });
   };
+  
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
-
-  // Rest of your existing code (date handling, chart preparation, etc.)
-  // ... [keep all the existing date range and chart data preparation code]
 
   return (
     <div className="space-y-6">
@@ -182,6 +220,9 @@ export function RevenueBookingReport() {
         </Button>
       </div>
 
+
+
+      {/* over view */}
       {activeTab === 'overview' && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -194,7 +235,7 @@ export function RevenueBookingReport() {
                   <Skeleton className="h-8 w-[120px]" />
                 ) : (
                   <div className="text-2xl font-bold">
-                    ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R{total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 )}
               </CardContent>
@@ -208,7 +249,7 @@ export function RevenueBookingReport() {
                 {loading ? (
                   <Skeleton className="h-8 w-[120px]" />
                 ) : (
-                  <div className="text-2xl font-bold">{totalBookings}</div>
+                  <div className="text-2xl font-bold">{bookings.length}</div>
                 )}
               </CardContent>
             </Card>
@@ -222,7 +263,7 @@ export function RevenueBookingReport() {
                   <Skeleton className="h-8 w-[120px]" />
                 ) : (
                   <div className="text-2xl font-bold">
-                    ${avgBookingValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R{avgBookingValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 )}
               </CardContent>
@@ -272,13 +313,13 @@ export function RevenueBookingReport() {
                       <XAxis dataKey="displayDate" />
                       <YAxis />
                       <Tooltip 
-                        formatter={(value) => [value, 'Bookings']}
+                        formatter={(value) => [value, 'Revenue']}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
                       <Legend />
                       <Line 
                         type="monotone" 
-                        dataKey="bookings" 
+                        dataKey="revenue" 
                         stroke="#82ca9d" 
                         name="Bookings" 
                         strokeWidth={2}
@@ -292,6 +333,8 @@ export function RevenueBookingReport() {
         </>
       )}
 
+
+      {/* team proformance */}
       {activeTab === 'team' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
@@ -316,10 +359,10 @@ export function RevenueBookingReport() {
                       <TableCell>{member.role}</TableCell>
                       <TableCell className="text-right">{member.bookings}</TableCell>
                       <TableCell className="text-right">
-                        ${member.revenue.toFixed(2)}
+                        R{member.revenue.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
-                        ${member.avgRevenue.toFixed(2)}
+                        R{member.avgRevenue.toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -361,6 +404,9 @@ export function RevenueBookingReport() {
         </div>
       )}
 
+
+
+      {/* roomperfomance */}
       {activeTab === 'rooms' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
@@ -435,11 +481,10 @@ export function RevenueBookingReport() {
                 <TableHead>Booking ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Service</TableHead>
+               
                 <TableHead>Staff</TableHead>
                 <TableHead>Room</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Status</TableHead>
+
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -461,24 +506,14 @@ export function RevenueBookingReport() {
                   <TableRow key={booking.id}>
                     <TableCell className="font-medium">{booking.id}</TableCell>
                     <TableCell>{format(booking.date, 'MMM dd, yyyy')}</TableCell>
-                    <TableCell>{booking.customerName}</TableCell>
-                    <TableCell>{booking.serviceType}</TableCell>
-                    <TableCell>{teamMembers.find(m => m.id === booking.staffId)?.name || 'N/A'}</TableCell>
-                    <TableCell>{rooms.find(r => r.id === booking.roomId)?.name || 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                      ${booking.amount.toFixed(2)}
-                    </TableCell>
+                    <TableCell>{booking.client?.name}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        booking.status === 'completed' 
-                          ? 'bg-green-100 text-green-800' 
-                          : booking.status === 'pending' 
-                            ? 'bg-yellow-100 text-yellow-800' 
-                            : 'bg-red-100 text-red-800'
-                      }`}>
-                        {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                      </span>
+                      {booking.teamMemberIds.length > 0
+                      ? booking.teamMemberIds
+                      .map(id => teamMembers.find(m => m.id === id)?.name || 'Unknown').join(', '): 'N/A'}
                     </TableCell>
+                    <TableCell>{rooms.find(r => r.id === booking.roomId)?.name || 'N/A'}</TableCell>
+                    
                   </TableRow>
                 ))
               ) : (
