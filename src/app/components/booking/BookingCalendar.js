@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { format, isAfter } from 'date-fns';
-
+import { format, isAfter,parse, differenceInMinutes } from 'date-fns';
+import {bookingConfig} from '../../data/bookingdates.js'
 export default function CalendarGrid({ availableDates, onBookingSelect }) {
   const [dateRange, setDateRange] = useState({
     from: null,
@@ -15,9 +15,13 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
   });
   const [showTimeSlots, setShowTimeSlots] = useState(false);
 
+const {operatingHours}=bookingConfig
+const {start,end}=operatingHours
+const startHour = parseInt(start.split(':')[0], 10);
+const endHour = parseInt(end.split(':')[0], 10);
   // Generate time slots from 8AM to 8PM
-  const timeSlots = Array.from({ length: 13 }, (_, i) => {
-    const hour = i + 8;
+  const timeSlots = Array.from({ length: endHour - startHour + 1 }, (_, i) => {
+    const hour = startHour + i;
     return `${hour.toString().padStart(2, '0')}:00`;
   });
 
@@ -47,9 +51,14 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
     const dateData = availableDates.find(d => d.date === dateStr);
     if (!dateData) return false;
     
-    return !dateData.bookedSlots.some(slot => 
-      time >= slot.start && time < slot.end
-    );
+    const bookedstartHour = parseInt(dateData.startTime.split(':')[0], 10);
+    const bookedendHour = parseInt(dateData.endTime.split(':')[0], 10);
+    const bookedtimeSlots = Array.from({ length: bookedendHour - bookedstartHour + 1 }, (_, i) => {
+      const hour = bookedstartHour + i;
+      return `${hour.toString().padStart(2, '0')}:00`;
+      });
+     
+    return bookedtimeSlots.includes(time);
   };
 
   // Handle time selection
@@ -110,8 +119,18 @@ export default function CalendarGrid({ availableDates, onBookingSelect }) {
             numberOfMonths={2}
             disabled={(day) => {
               const dateStr = format(day, 'yyyy-MM-dd');
-              const dateData = availableDates.find(d => d.date !== dateStr);
-              return !dateData;
+              const dateData = availableDates.find(d => d.date === dateStr);
+          
+              if (!dateData) return false; // No data for this day = disable
+              // Calculate total booked minutes for the day
+              const bookedstartHour = parseInt(dateData.startTime.split(':')[0], 10);
+              const bookedendHour = parseInt(dateData.endTime.split(':')[0], 10);
+              const bookedtimeSlots = Array.from({ length: bookedendHour - bookedstartHour + 1 }, (_, i) => {
+              const hour = bookedstartHour + i;
+              return `${hour.toString().padStart(2, '0')}:00`;
+              });
+
+            return JSON.stringify(bookedtimeSlots) === JSON.stringify(timeSlots);
             }}
           />
           

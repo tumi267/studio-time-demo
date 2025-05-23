@@ -1,8 +1,8 @@
 export const bookingConfig = {
     minSessionHours: 2,
     operatingHours: {
-      start: 8,
-      end: 20,
+      start: '10:00',
+      end: '18:00',
     },
   };
   
